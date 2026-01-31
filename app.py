@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import logging
 
 # ==============================
 # CONFIGURAÇÃO DA PÁGINA
@@ -32,6 +33,15 @@ COLUNAS_ESPERADAS = {
 }
 
 MAX_LINHAS_TABELA = 1000
+
+# ==============================
+# CONFIGURAÇÃO DE LOGGING SEGURO
+# ==============================
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 # ==============================
@@ -68,12 +78,46 @@ def carregar_dados():
         return df
 
     except Exception as e:
-        st.error("❌ Erro ao carregar ou validar os dados.")
-        st.exception(e)
+        st.error("❌ Erro ao carregar ou validar os dados. Por favor, tente novamente mais tarde.")
+        logger.error(f"Erro ao carregar dados: {str(e)}", exc_info=True)
         st.stop()
 
 
+def sanitizar_csv_injection(value):
+    """Remove caracteres perigosos que causam CSV injection (=, +, -, @)."""
+    if isinstance(value, str):
+        # Remove caracteres perigosos no início
+        return value.lstrip('=+-@')
+    return value
+
+
+def sanitizar_dataframe(df):
+    """Aplica sanitização CSV injection a todas as colunas texto."""
+    df_copia = df.copy()
+    for col in df_copia.select_dtypes(include='object').columns:
+        df_copia[col] = df_copia[col].astype(str).apply(sanitizar_csv_injection)
+    return df_copia
+
+
 df = carregar_dados()
+
+# ==============================
+# FUNÇÕES DE SANITIZAÇÃO CSV INJECTION
+# ==============================
+def sanitizar_csv_injection(value):
+    """Remove caracteres perigosos que causam CSV injection (=, +, -, @)."""
+    if isinstance(value, str):
+        return value.lstrip('=+-@')
+    return value
+
+
+def sanitizar_dataframe(df):
+    """Aplica sanitização CSV injection a todas as colunas texto."""
+    df_copia = df.copy()
+    for col in df_copia.select_dtypes(include='object').columns:
+        df_copia[col] = df_copia[col].astype(str).apply(sanitizar_csv_injection)
+    return df_copia
+
 
 # ==============================
 # BARRA LATERAL — FILTROS
@@ -212,7 +256,8 @@ with col_g4:
         st.plotly_chart(fig, use_container_width=True)
 
 # ==============================
-# TABELA DE DADOS
+# TABELA DE DADOS (SANITIZADA)
 # ==============================
 st.subheader("Dados Detalhados")
-st.dataframe(df_filtrado.head(MAX_LINHAS_TABELA))
+df_sanitizado = sanitizar_dataframe(df_filtrado)
+st.dataframe(df_sanitizado.head(MAX_LINHAS_TABELA))
